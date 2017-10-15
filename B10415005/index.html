@@ -173,8 +173,28 @@ insert函式新增元素到List最前方：</p><pre><code class="[TOC] hljs"><di
 <span class="hljs-number">16.</span>   lk−&gt;cpu = mycpu();
 <span class="hljs-number">17.</span>   getcallerpcs(&amp;lk, lk−&gt;pcs);
 <span class="hljs-number">18.</span> }
-</div></div></code></pre><p><img src="https://i.imgur.com/0vCznHH.jpg" alt=""><br>
-須注意到的是，如果啟用interrupts，則kernel code可能停止在任何階段，並且執行interrups handler，若interrup handler嘗試存取先前process已經取得的lock，則可能產生deadlock，xv6的保守作法是：spin-lock保護的Critical Section，都會停用interrupts(上述程式碼Line 4)。</p><p>CPU或者編譯器(Compiler)有時為了要最佳化CPU性能，會讓需要比較多Cycle的指令先執行，如此可以和其他指令進行Instruction pipelining，會在不影響結果的情況下重新安排指令執行順序，但是對於以下的程式碼，重新排序指令順序可能導致災難：</p><pre><code class="[TOC] hljs"><div class="wrapper"><div class="gutter linenumber"><span data-linenumber="1"></span>
+</div></div></code></pre><p><img src="https://i.imgur.com/0vCznHH.jpg" alt=""></p><h1 id="interruptsampordering"><a class="anchor hidden-xs" href="#interruptsampordering" title="interruptsampordering"><span class="octicon octicon-link"></span></a>Interrupts&amp;Ordering</h1><p>須注意到的是，如果啟用interrupts，則kernel code可能停止在任何階段，並且執行interrups handler，若interrup handler嘗試存取先前process已經取得的lock，則可能產生deadlock，xv6的保守作法是：spin-lock保護的Critical Section，都會停用interrupts，對應即為上述程式碼第四行，以下是pushcli的程式碼以及說明：</p><pre><code class="[TOC] hljs"><div class="wrapper"><div class="gutter linenumber"><span data-linenumber="1"></span>
+<span data-linenumber="2"></span>
+<span data-linenumber="3"></span>
+<span data-linenumber="4"></span>
+<span data-linenumber="5"></span>
+<span data-linenumber="6"></span>
+<span data-linenumber="7"></span>
+<span data-linenumber="8"></span>
+<span data-linenumber="9"></span>
+<span data-linenumber="10"></span>
+<span data-linenumber="11"></span></div><div class="code"><span class="hljs-number">1</span> . <span class="hljs-keyword">void</span>
+<span class="hljs-number">2</span> . pushcli(<span class="hljs-keyword">void</span>)
+<span class="hljs-number">3</span> . {
+<span class="hljs-number">4</span> .   <span class="hljs-keyword">int</span> eflags;
+<span class="hljs-number">5</span> .
+<span class="hljs-number">6</span> .   eflags = readeflags(); <span class="hljs-comment">//取得當前flag</span>
+<span class="hljs-number">7</span> .   cli(); <span class="hljs-comment">//關閉interrupts</span>
+<span class="hljs-number">8</span> .   <span class="hljs-keyword">if</span>(mycpu()−&gt;ncli == <span class="hljs-number">0</span>)
+<span class="hljs-number">9</span> .     mycpu()−&gt;intena = eflags &amp; FL_IF; <span class="hljs-comment">//改變CPU flag，使其關閉interrupts</span>
+<span class="hljs-number">10.</span>   mycpu()−&gt;ncli += <span class="hljs-number">1</span>; <span class="hljs-comment">//堆疊累加</span>
+<span class="hljs-number">11.</span> }
+</div></div></code></pre><p>CPU或者編譯器(Compiler)有時為了要最佳化CPU性能，會讓需要比較多Cycle的指令先執行，如此可以和其他指令進行Instruction pipelining，會在不影響結果的情況下重新安排指令執行順序，但是對於以下的程式碼，重新排序指令順序可能導致災難：</p><pre><code class="[TOC] hljs"><div class="wrapper"><div class="gutter linenumber"><span data-linenumber="1"></span>
 <span data-linenumber="2"></span>
 <span data-linenumber="3"></span>
 <span data-linenumber="4"></span>
@@ -220,7 +240,26 @@ insert函式新增元素到List最前方：</p><pre><code class="[TOC] hljs"><di
 <span class="hljs-bullet">17.
 </span><span class="hljs-bullet">18.   </span>popcli();
 <span class="hljs-bullet">19. </span>}
-</div></div></code></pre><p>在acquire的時候有討論到spin-lock在進入Crititcal Section時會關閉interrupt，顯然地，在離開始必須將其開啟，popcli函式即是。</p><hr><h1 id="sleep-lock"><a class="anchor hidden-xs" href="#sleep-lock" title="sleep-lock"><span class="octicon octicon-link"></span></a>Sleep Lock</h1><p><strong>Overview</strong><br>
+</div></div></code></pre><p>在acquire的時候有討論到spin-lock在進入Crititcal Section時會關閉interrupt，顯然地，在離開始必須將其開啟，popcli函式即是，以下為其程式碼&amp;說明：</p><pre><code class="[TOC] hljs"><div class="wrapper"><div class="gutter linenumber"><span data-linenumber="1"></span>
+<span data-linenumber="2"></span>
+<span data-linenumber="3"></span>
+<span data-linenumber="4"></span>
+<span data-linenumber="5"></span>
+<span data-linenumber="6"></span>
+<span data-linenumber="7"></span>
+<span data-linenumber="8"></span>
+<span data-linenumber="9"></span>
+<span data-linenumber="10"></span></div><div class="code"><span class="hljs-number">1</span> . <span class="hljs-keyword">void</span>
+<span class="hljs-number">2</span> . popcli(<span class="hljs-keyword">void</span>)
+<span class="hljs-number">3</span> . {
+<span class="hljs-number">4</span> .   <span class="hljs-keyword">if</span>(readeflags()&amp;FL_IF) <span class="hljs-comment">//檢查是否禁用interrupts</span>
+<span class="hljs-number">5</span> .     panic(<span class="hljs-string">"popcli − interruptible"</span>);
+<span class="hljs-number">6</span> .   <span class="hljs-keyword">if</span>(−−mycpu()−&gt;ncli &lt; <span class="hljs-number">0</span>)
+<span class="hljs-number">7</span> .     panic(<span class="hljs-string">"popcli"</span>);
+<span class="hljs-number">8</span> .   <span class="hljs-keyword">if</span>(mycpu()−&gt;ncli == <span class="hljs-number">0</span> &amp;&amp; mycpu()−&gt;intena)
+<span class="hljs-number">9</span> .     sti();
+<span class="hljs-number">10.</span> }
+</div></div></code></pre><hr><h1 id="sleep-lock"><a class="anchor hidden-xs" href="#sleep-lock" title="sleep-lock"><span class="octicon octicon-link"></span></a>Sleep Lock</h1><p><strong>Overview</strong><br>
 <img src="https://i.imgur.com/Gfndqig.png" alt=""><br>
 <strong>1. DataStructure Of Sleep Lock</strong><br>
 有時候可能會長期持有lock，例如檔案系統，然而等待期間若要讓其他Process能夠持續進行，則必須要可以在Context-Switches環境下運作的lock機制，Xv6為此提供了sleep-lock。</p><pre><code class="[TOC] hljs"><div class="wrapper"><div class="gutter linenumber"><span data-linenumber="1"></span>
@@ -298,19 +337,19 @@ insert函式新增元素到List最前方：</p><pre><code class="[TOC] hljs"><di
 <span class="hljs-bullet">8.       </span>p−&gt;state = RUNNABLE;
 <span class="hljs-bullet">9. </span>}
 
-</div></div></code></pre><p>不過，最簡單的解決方法是使用支持遞迴的Recursive Locks。</p><div class="resize-sensor" style="position: absolute; left: 0px; top: 0px; right: 0px; bottom: 0px; overflow: hidden; z-index: -1; visibility: hidden;"><div class="resize-sensor-expand" style="position: absolute; left: 0; top: 0; right: 0; bottom: 0; overflow: hidden; z-index: -1; visibility: hidden;"><div style="position: absolute; left: 0px; top: 0px; transition: 0s; width: 100000px; height: 100000px;"></div></div><div class="resize-sensor-shrink" style="position: absolute; left: 0; top: 0; right: 0; bottom: 0; overflow: hidden; z-index: -1; visibility: hidden;"><div style="position: absolute; left: 0; top: 0; transition: 0s; width: 200%; height: 200%"></div></div></div></div>
+</div></div></code></pre><p>不過，最簡單的解決方法是使用支持遞迴的Recursive Locks。</p></div>
     <div class="ui-toc dropup unselectable hidden-print" style="display:none;">
         <div class="pull-right dropdown">
             <a id="tocLabel" class="ui-toc-label btn btn-default" data-toggle="dropdown" href="#" role="button" aria-haspopup="true" aria-expanded="false" title="Table of content">
                 <i class="fa fa-bars"></i>
             </a>
             <ul id="ui-toc" class="ui-toc-dropdown dropdown-menu" aria-labelledby="tocLabel">
-                <div class="toc"><ul class="nav"><li class=""><a href="#106-os-homework-1">106 OS Homework 1</a></li><li class=""><a href="#race-condition">Race Condition</a></li><li class=""><a href="#lockampcritical-section">Lock&amp;Critical Section</a></li><li class=""><a href="#spin-lock">Spin Lock</a></li><li><a href="#sleep-lock">Sleep Lock</a></li><li><a href="#lock的極限">Lock的極限</a></li></ul></div><div class="toc-menu"><a class="expand-toggle" href="#">Expand all</a><a class="back-to-top" href="#">Back to top</a><a class="go-to-bottom" href="#">Go to bottom</a></div>
+                <div class="toc"><ul class="nav"><li class=""><a href="#106-os-homework-1">106 OS Homework 1</a></li><li class=""><a href="#race-condition">Race Condition</a></li><li><a href="#lockampcritical-section">Lock&amp;Critical Section</a></li><li><a href="#spin-lock">Spin Lock</a></li><li><a href="#interruptsampordering">Interrupts&amp;Ordering</a></li><li class=""><a href="#sleep-lock">Sleep Lock</a></li><li><a href="#lock的極限">Lock的極限</a></li></ul></div><div class="toc-menu"><a class="expand-toggle" href="#">Expand all</a><a class="back-to-top" href="#">Back to top</a><a class="go-to-bottom" href="#">Go to bottom</a></div>
             </ul>
         </div>
     </div>
     <div id="ui-toc-affix" class="ui-affix-toc ui-toc-dropdown unselectable hidden-print" data-spy="affix" style="top:17px;display:none;"  >
-        <div class="toc"><ul class="nav"><li class=""><a href="#106-os-homework-1">106 OS Homework 1</a></li><li class=""><a href="#race-condition">Race Condition</a></li><li class=""><a href="#lockampcritical-section">Lock&amp;Critical Section</a></li><li class=""><a href="#spin-lock">Spin Lock</a></li><li><a href="#sleep-lock">Sleep Lock</a></li><li><a href="#lock的極限">Lock的極限</a></li></ul></div><div class="toc-menu"><a class="expand-toggle" href="#">Expand all</a><a class="back-to-top" href="#">Back to top</a><a class="go-to-bottom" href="#">Go to bottom</a></div>
+        <div class="toc"><ul class="nav"><li class=""><a href="#106-os-homework-1">106 OS Homework 1</a></li><li class=""><a href="#race-condition">Race Condition</a></li><li class=""><a href="#lockampcritical-section">Lock&amp;Critical Section</a></li><li class=""><a href="#spin-lock">Spin Lock</a></li><li class=""><a href="#interruptsampordering">Interrupts&amp;Ordering</a></li><li class=""><a href="#sleep-lock">Sleep Lock</a></li><li><a href="#lock的極限">Lock的極限</a></li></ul></div><div class="toc-menu"><a class="expand-toggle" href="#">Expand all</a><a class="back-to-top" href="#">Back to top</a><a class="go-to-bottom" href="#">Go to bottom</a></div>
     </div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.1.1/jquery.min.js" integrity="sha256-hVVnYaiADRTO2PzUGmuLJr8BLUSjGIZsDYGmIJLv2b8=" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha256-U5ZEeKfGNOja007MMD3YBI0A3OSZOQbeG6z2f2Y0hu8=" crossorigin="anonymous" defer></script>
