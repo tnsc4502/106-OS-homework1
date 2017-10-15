@@ -101,7 +101,8 @@ insert函式新增元素到List最前方：</p><pre><code class="[TOC] hljs"><di
  <span class="hljs-number">13.</span> 　 <span class="hljs-built_in">list</span> = l;
  <span class="hljs-number">14.</span> 　 release(&amp;listlock);
  <span class="hljs-number">15.</span> }
-</div></div></code></pre><p>可以將Critical Section想像成序列化(Serialized)的程式碼區塊或者想像該區域間的指令都是原子(Atomic)操作指令，較晚獲得lock的thread或CPU，看到的都是前者完整執行完的結果。</p><h1 id="spin-lock"><a class="anchor hidden-xs" href="#spin-lock" title="spin-lock"><span class="octicon octicon-link"></span></a>Spin Lock</h1><p><strong>1. Data Structure Of Spin Lock</strong></p><p>Xv6提供兩種lock類型，首先介紹spin-lock，以下是spin-lock的資料結構：</p><pre><code class="[TOC] hljs"><div class="wrapper"><div class="gutter linenumber"><span data-linenumber="1"></span>
+</div></div></code></pre><p>可以將Critical Section想像成序列化(Serialized)的程式碼區塊或者想像該區域間的指令都是原子(Atomic)操作指令，較晚獲得lock的thread或CPU，看到的都是前者完整執行完的結果。</p><h1 id="spin-lock"><a class="anchor hidden-xs" href="#spin-lock" title="spin-lock"><span class="octicon octicon-link"></span></a>Spin Lock</h1><p><strong>Overview</strong><br>
+<img src="https://i.imgur.com/DM1Wjir.png" alt=""></p><p><strong>1. Data Structure Of Spin Lock</strong></p><p>Xv6提供兩種lock類型，首先介紹spin-lock，以下是spin-lock的資料結構：</p><pre><code class="[TOC] hljs"><div class="wrapper"><div class="gutter linenumber"><span data-linenumber="1"></span>
 <span data-linenumber="2"></span>
 <span data-linenumber="3"></span>
 <span data-linenumber="4"></span>
@@ -172,7 +173,7 @@ insert函式新增元素到List最前方：</p><pre><code class="[TOC] hljs"><di
 <span class="hljs-number">16.</span>   lk−&gt;cpu = mycpu();
 <span class="hljs-number">17.</span>   getcallerpcs(&amp;lk, lk−&gt;pcs);
 <span class="hljs-number">18.</span> }
-</div></div></code></pre><p><img src="https://i.imgur.com/zQ0th5i.jpg" alt=""><br>
+</div></div></code></pre><p><img src="https://i.imgur.com/0vCznHH.jpg" alt=""><br>
 須注意到的是，如果啟用interrupts，則kernel code可能停止在任何階段，並且執行interrups handler，若interrup handler嘗試存取先前process已經取得的lock，則可能產生deadlock，xv6的保守作法是：spin-lock保護的Critical Section，都會停用interrupts(上述程式碼Line 4)。</p><p>CPU或者編譯器(Compiler)有時為了要最佳化CPU性能，會讓需要比較多Cycle的指令先執行，如此可以和其他指令進行Instruction pipelining，會在不影響結果的情況下重新安排指令執行順序，但是對於以下的程式碼，重新排序指令順序可能導致災難：</p><pre><code class="[TOC] hljs"><div class="wrapper"><div class="gutter linenumber"><span data-linenumber="1"></span>
 <span data-linenumber="2"></span>
 <span data-linenumber="3"></span>
@@ -186,7 +187,7 @@ insert函式新增元素到List最前方：</p><pre><code class="[TOC] hljs"><di
 <span class="hljs-bullet">6. </span>release(&amp;listlock);
 </div></div></code></pre><p>如果重新排序順序，使得執行完第6行後，第3~5行被其他的執行緒看見，則可能導致嚴重的錯誤結果。<br>
 為了要避免這樣的問題，可以告知系統以及編譯器不要進行指令重排，__sync_synchronize()即是負責此功能。</p><hr><p><strong>3. Release</strong><br>
-要釋放lock，必須清除lock保存的debugging資訊，並且將locked欄位設定回0，跟acquire相同，變更locked的動作本身也必須是原子操作(Atmoic)才能保證正確性，x86保證movl可以安全地更新4Bytes資料。</p><pre><code class="[TOC] hljs"><div class="wrapper"><div class="gutter linenumber"><span data-linenumber="1"></span>
+要釋放lock，必須清除lock保存的debugging資訊，並且將locked欄位設定回0，跟acquire相同，變更locked的動作本身也必須是原子操作(Atomic)才能保證正確性，x86保證movl可以安全地更新4Bytes資料。</p><pre><code class="[TOC] hljs"><div class="wrapper"><div class="gutter linenumber"><span data-linenumber="1"></span>
 <span data-linenumber="2"></span>
 <span data-linenumber="3"></span>
 <span data-linenumber="4"></span>
@@ -219,7 +220,9 @@ insert函式新增元素到List最前方：</p><pre><code class="[TOC] hljs"><di
 <span class="hljs-bullet">17.
 </span><span class="hljs-bullet">18.   </span>popcli();
 <span class="hljs-bullet">19. </span>}
-</div></div></code></pre><p>在acquire的時候有討論到spin-lock在進入Crititcal Section時會關閉interrupt，顯然地，在離開始必須將其開啟，popcli函式即是。</p><hr><h1 id="sleep-lock"><a class="anchor hidden-xs" href="#sleep-lock" title="sleep-lock"><span class="octicon octicon-link"></span></a>Sleep Lock</h1><p><strong>1. DataStructure Of Sleep Lock</strong><br>
+</div></div></code></pre><p>在acquire的時候有討論到spin-lock在進入Crititcal Section時會關閉interrupt，顯然地，在離開始必須將其開啟，popcli函式即是。</p><hr><h1 id="sleep-lock"><a class="anchor hidden-xs" href="#sleep-lock" title="sleep-lock"><span class="octicon octicon-link"></span></a>Sleep Lock</h1><p><strong>Overview</strong><br>
+<img src="https://i.imgur.com/Gfndqig.png" alt=""><br>
+<strong>1. DataStructure Of Sleep Lock</strong><br>
 有時候可能會長期持有lock，例如檔案系統，然而等待期間若要讓其他Process能夠持續進行，則必須要可以在Context-Switches環境下運作的lock機制，Xv6為此提供了sleep-lock。</p><pre><code class="[TOC] hljs"><div class="wrapper"><div class="gutter linenumber"><span data-linenumber="1"></span>
 <span data-linenumber="2"></span>
 <span data-linenumber="3"></span>
@@ -302,12 +305,12 @@ insert函式新增元素到List最前方：</p><pre><code class="[TOC] hljs"><di
                 <i class="fa fa-bars"></i>
             </a>
             <ul id="ui-toc" class="ui-toc-dropdown dropdown-menu" aria-labelledby="tocLabel">
-                <div class="toc"><ul class="nav"><li class=""><a href="#106-os-homework-1">106 OS Homework 1</a></li><li><a href="#race-condition">Race Condition</a></li><li><a href="#lockampcritical-section">Lock&amp;Critical Section</a></li><li><a href="#spin-lock">Spin Lock</a></li><li><a href="#sleep-lock">Sleep Lock</a></li><li><a href="#lock的極限">Lock的極限</a></li></ul></div><div class="toc-menu"><a class="expand-toggle" href="#">Expand all</a><a class="back-to-top" href="#">Back to top</a><a class="go-to-bottom" href="#">Go to bottom</a></div>
+                <div class="toc"><ul class="nav"><li class=""><a href="#106-os-homework-1">106 OS Homework 1</a></li><li class=""><a href="#race-condition">Race Condition</a></li><li class=""><a href="#lockampcritical-section">Lock&amp;Critical Section</a></li><li class=""><a href="#spin-lock">Spin Lock</a></li><li><a href="#sleep-lock">Sleep Lock</a></li><li><a href="#lock的極限">Lock的極限</a></li></ul></div><div class="toc-menu"><a class="expand-toggle" href="#">Expand all</a><a class="back-to-top" href="#">Back to top</a><a class="go-to-bottom" href="#">Go to bottom</a></div>
             </ul>
         </div>
     </div>
     <div id="ui-toc-affix" class="ui-affix-toc ui-toc-dropdown unselectable hidden-print" data-spy="affix" style="top:17px;display:none;"  >
-        <div class="toc"><ul class="nav"><li class=""><a href="#106-os-homework-1">106 OS Homework 1</a></li><li><a href="#race-condition">Race Condition</a></li><li><a href="#lockampcritical-section">Lock&amp;Critical Section</a></li><li><a href="#spin-lock">Spin Lock</a></li><li><a href="#sleep-lock">Sleep Lock</a></li><li><a href="#lock的極限">Lock的極限</a></li></ul></div><div class="toc-menu"><a class="expand-toggle" href="#">Expand all</a><a class="back-to-top" href="#">Back to top</a><a class="go-to-bottom" href="#">Go to bottom</a></div>
+        <div class="toc"><ul class="nav"><li class=""><a href="#106-os-homework-1">106 OS Homework 1</a></li><li class=""><a href="#race-condition">Race Condition</a></li><li class=""><a href="#lockampcritical-section">Lock&amp;Critical Section</a></li><li class=""><a href="#spin-lock">Spin Lock</a></li><li><a href="#sleep-lock">Sleep Lock</a></li><li><a href="#lock的極限">Lock的極限</a></li></ul></div><div class="toc-menu"><a class="expand-toggle" href="#">Expand all</a><a class="back-to-top" href="#">Back to top</a><a class="go-to-bottom" href="#">Go to bottom</a></div>
     </div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.1.1/jquery.min.js" integrity="sha256-hVVnYaiADRTO2PzUGmuLJr8BLUSjGIZsDYGmIJLv2b8=" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha256-U5ZEeKfGNOja007MMD3YBI0A3OSZOQbeG6z2f2Y0hu8=" crossorigin="anonymous" defer></script>
